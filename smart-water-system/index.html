@@ -10,9 +10,10 @@
 </head>
 <body><main class="wrap">
 <header><div><div class="brand">💧 Aqua<span>Watch</span></div><div class="sub">City Water Authority · Distribution & Leakage Monitoring</div></div><div class="live">● SIMULATED LIVE DATA</div></header>
-<section class="grid"><div class="card"><div class="label">Monitored Zones</div><div class="value">6</div></div><div class="card"><div class="label">Safety Thresholds</div><div class="value" style="font-size:21px">2–5 bar</div><div class="sub">reservoir minimum: 25%</div></div></section>
-<section class="panel"><div class="toolbar"><h2>Zone Distribution Overview</h2></div><div class="tablewrap"><table><thead><tr><th>Zone</th><th>Reservoir</th><th>Daily Supply</th><th>Pressure</th><th>Supply Timings</th><th>Network Status</th></tr></thead><tbody id="zoneBody"></tbody></table></div></section>
+<section class="grid" aria-label="Network metrics"><div class="card"><div class="label">Daily Water Supplied</div><div id="total" class="value">—</div><div class="sub">kilolitres / day</div></div><div class="card"><div class="label">Average Reservoir Level</div><div id="avg" class="value">—</div><div class="sub">across selected zones</div></div><div class="card"><div class="label">Highest Consumption Zone</div><div id="highest" class="value" style="font-size:23px">—</div><div class="sub">by daily supply estimate</div></div><div class="card"><div class="label">Critical / Warning Alerts</div><div id="alerts-count" class="value">—</div><div class="sub">based on pressure and level</div></div></section>
+<section class="panel"><div class="toolbar"><h2>Zone Distribution Overview</h2><label for="zoneFilter">Filter zone: <select id="zoneFilter"><option value="all">All Zones</option></select></label></div><div class="tablewrap"><table><thead><tr><th>Zone</th><th>Reservoir</th><th>Daily Supply</th><th>Pressure</th><th>Supply Timings</th><th>Network Status</th></tr></thead><tbody id="zoneBody"></tbody></table></div></section>
 <section class="panel"><h2>⚠️ Monitoring & Maintenance Alerts</h2><div id="alerts"></div></section>
+<section class="panel"><h2>Leakage Incident Register</h2><div class="tablewrap"><table><thead><tr><th>Incident</th><th>Zone</th><th>Issue</th><th>Severity</th><th>Detection Time</th><th>Maintenance Status</th></tr></thead><tbody id="incidents"></tbody></table></div></section>
 <div class="foot">Demo data only · Normal pipeline pressure: 2.0–5.0 bar · Reservoir warning threshold: 25% · Refresh page to replay sample data</div>
 </main>
 <script>
@@ -24,13 +25,21 @@ const zones=[
 {id:'Central',level:91,supply:1750,pressure:3.8,timing:'05:00–11:00',status:'Operational'},
 {id:'Industrial',level:31,supply:860,pressure:2.5,timing:'08:00–12:00',status:'Operational'}
 ];
-const color=(s)=>s==='Critical'?'danger':s==='Warning'?'warn':'ok';
-function render(){const data=zones;const warnings=[];
+const leakages=[
+{id:'LK-101',zone:'South',issue:'Suspected mainline rupture',severity:'Critical',time:'2026-10-22 08:40',maintenance:'Dispatched'},
+{id:'LK-102',zone:'West',issue:'Abnormal pressure surge',severity:'High',time:'2026-10-22 09:15',maintenance:'Investigating'},
+{id:'LK-103',zone:'North',issue:'Minor joint seepage',severity:'Low',time:'2026-10-22 07:20',maintenance:'Scheduled'},
+{id:'LK-104',zone:'Industrial',issue:'Meter anomaly',severity:'Medium',time:'2026-10-22 10:05',maintenance:'Pending'}
+];
+leakages.sort((a,b)=>({Critical:0,High:1,Medium:2,Low:3}[a.severity])-({Critical:0,High:1,Medium:2,Low:3}[b.severity]));
+const filter=document.querySelector('#zoneFilter');zones.forEach(z=>{const o=document.createElement('option');o.value=z.id;o.textContent=z.id;filter.appendChild(o)});
+const color=(s)=>['Critical','High'].includes(s)?'danger':(['Warning','Medium','Investigating','Pending'].includes(s)?'warn':'ok');
+function render(){const selected=filter.value;const data=selected==='all'?zones:zones.filter(z=>z.id===selected);const incidents=selected==='all'?leakages:leakages.filter(l=>l.zone===selected);const total=data.reduce((a,z)=>a+z.supply,0);const avg=data.reduce((a,z)=>a+z.level,0)/data.length;const high=[...data].sort((a,b)=>b.supply-a.supply)[0];const warnings=[];
  data.forEach(z=>{if(z.pressure<2||z.pressure>5)warnings.push({zone:z.id,severity:'Critical',text:`Pressure ${z.pressure.toFixed(1)} bar outside safe range (2.0–5.0 bar)`});if(z.level<25)warnings.push({zone:z.id,severity:'Critical',text:`Reservoir level ${z.level}% is below 25%`})});
- 
+ document.querySelector('#total').textContent=total.toLocaleString('en-IN');document.querySelector('#avg').textContent=avg.toFixed(1)+'%';document.querySelector('#highest').textContent=high.id;document.querySelector('#alerts-count').textContent=warnings.length;
  document.querySelector('#zoneBody').innerHTML=data.map(z=>`<tr><td><strong>${z.id}</strong></td><td>${z.level}%<div class="bar"><div class="fill" style="width:${z.level}%;background:${z.level<25?'var(--red)':'var(--cyan)'}"></div></div></td><td>${z.supply.toLocaleString('en-IN')} kL</td><td>${z.pressure.toFixed(1)} bar</td><td>${z.timing}</td><td><span class="pill ${color(z.status)}">${z.status}</span></td></tr>`).join('');
  document.querySelector('#alerts').innerHTML=warnings.length?warnings.map(w=>`<div class="alert"><strong>${w.severity} · ${w.zone}</strong> — ${w.text} · Priority: Immediate</div>`).join(''):'<div class="empty">✓ All selected zones within safety thresholds</div>';
-
+ document.querySelector('#incidents').innerHTML=incidents.length?incidents.map(l=>`<tr><td>${l.id}</td><td>${l.zone}</td><td>${l.issue}</td><td><span class="pill ${color(l.severity)}">${l.severity}</span></td><td>${l.time}</td><td>${l.maintenance}</td></tr>`).join(''):'<tr><td colspan="6">No recorded incidents for this zone</td></tr>';
 }
-render();
+filter.addEventListener('change',render);render();
 </script></body></html>
