@@ -1,208 +1,130 @@
-
 pipeline {
     agent any
-
     options {
         timestamps()
         disableConcurrentBuilds()
     }
-
     parameters {
-        booleanParam(
-            name: 'DEPLOY',
-            defaultValue: true,
-            description: 'Deploy to Docker Desktop Kubernetes'
-        )
-        booleanParam(
-            name: 'FAULTY_RELEASE',
-            defaultValue: false,
-            description: 'Break health check to demonstrate rollback'
-        )
+        booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Deploy to Docker Desktop Kubernetes')
+        booleanParam(name: 'FAULTY_RELEASE', defaultValue: false, description: 'Deliberately break the Kubernetes health probe to demonstrate rollback')
     }
-
     environment {
         DOCKER_IMAGE = 'aarxn06/smart-water'
         K8S_DEPLOYMENT = 'smart-water'
     }
-
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
-
-                sh '''
-                    set -eu
-                    cp smart-water-system/index.html .
-                    cp smart-water-system/Dockerfile .
-                    cp smart-water-system/deployment.yaml .
-                '''
+                sh '''#!/bin/sh
+set -eu
+cp smart-water-system/index.html .
+cp smart-water-system/Dockerfile .
+cp smart-water-system/deployment.yaml .
+'''
             }
         }
-
         stage('Parallel Quality Gates') {
             parallel {
-
                 stage('Validate Dashboard') {
                     steps {
-                        sh '''
-                            set -eu
-                            test -f index.html
-                            grep -q 'AquaWatch' index.html
-                            grep -q 'zoneFilter' index.html
-                            grep -q 'leakages' index.html
-                            grep -q 'pressure<2' index.html
-                            echo 'Dashboard checks: PASS' > dashboard-test.txt
-                        '''
+                        sh '''#!/bin/sh
+set -eu
+test -f index.html
+grep -q 'AquaWatch' index.html
+grep -q 'zoneFilter' index.html
+grep -q 'leakages' index.html
+grep -q 'pressure<2' index.html
+echo 'Dashboard content checks: PASS' > dashboard-test.txt
+'''
                     }
                 }
-
                 stage('Validate Manifests') {
                     steps {
-                        sh '''
-                            set -eu
-                            test -f Dockerfile
-                            test -f deployment.yaml
-                            grep -q 'readinessProbe:' deployment.yaml
-                            grep -q 'kind: Deployment' deployment.yaml
-                            echo 'Manifest checks: PASS' > manifest-test.txt
-                        '''
+                        sh '''#!/bin/sh
+set -eu
+test -f Dockerfile
+test -f deployment.yaml
+grep -q 'readinessProbe:' deployment.yaml
+grep -q 'kind: Deployment' deployment.yaml
+echo 'Manifest checks: PASS' > manifest-test.txt
+'''
                     }
                 }
             }
         }
-
         stage('Build Docker Image') {
             steps {
                 script {
                     env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
-
                     def bad = params.FAULTY_RELEASE ? 'true' : 'false'
-
-                    sh """
-                        docker build \
-                        --build-arg BREAK_HEALTH=${bad} \
-                        -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} .
-                    """
+                    sh "docker build --build-arg BREAK_HEALTH=${bad} -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
                 }
             }
         }
-
         stage('Local Image Smoke Test') {
             steps {
-                sh '''
-                    set -eu
-
-                    cid=$(docker run -d -p 18081:80 "$DOCKER_IMAGE:$IMAGE_TAG")
-
-                    trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
-
-                    sleep 3
-
-                    curl --fail --silent --show-error \
-                        http://localhost:18081/ | grep -q 'AquaWatch'
-
-                    if [ "$FAULTY_RELEASE" = "false" ]; then
-                        curl --fail --silent --show-error \
-                            http://localhost:18081/health.txt | grep -q OK
-                    fi
-
-                    echo 'Smoke test: PASS' > container-test.txt
-                '''
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            when {
-                expression { return params.DEPLOY }
-            }
-
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DH_USER',
-                        passwordVariable: 'DH_TOKEN'
-                    )
-                ]) {
-                    sh '''
-                        set -eu
-
-                        printf '%s' "$DH_TOKEN" | docker login \
-                            -u "$DH_USER" --password-stdin
-
-                        docker push "$DOCKER_IMAGE:$IMAGE_TAG"
-
-                        docker logout
-                    '''
+                script {
+                    sh '''#!/bin/sh
+set -eu
+cid=$(docker run -d -p 18081:80 "$DOCKER_IMAGE:$IMAGE_TAG")
+trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+sleep 3
+curl --fail --silent --show-error http://localhost:18081/ | grep -q 'AquaWatch'
+if [ "$FAULTY_RELEASE" = "false" ]; then
+  curl --fail --silent --show-error http://localhost:18081/health.txt | grep -q OK
+fi
+echo 'Container homepage smoke test: PASS' > container-test.txt
+'''
                 }
             }
         }
-
-        stage('Deploy and Auto-Rollback') {
-            when {
-                expression { return params.DEPLOY }
-            }
-
+        stage('Push to Docker Hub') {
+            when { expression { return params.DEPLOY } }
             steps {
-                withCredentials([
-                    file(
-                        credentialsId: 'kubeconfig',
-                        variable: 'KUBECONFIG'
-                    )
-                ]) {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DH_USER', passwordVariable: 'DH_TOKEN')]) {
+                    sh '''#!/bin/sh
+set -eu
+printf '%s' "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
+docker push "$DOCKER_IMAGE:$IMAGE_TAG"
+docker logout
+'''
+                }
+            }
+        }
+        stage('Deploy and Auto-Rollback') {
+            when { expression { return params.DEPLOY } }
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     script {
-
-                        sh '''
-                            set -eu
-
-                            sed "s|IMAGE_PLACEHOLDER|$DOCKER_IMAGE:$IMAGE_TAG|g" \
-                                deployment.yaml > rendered-deployment.yaml
-
-                            kubectl apply -f rendered-deployment.yaml
-                        '''
-
-                        def rolloutCode = sh(
-                            script: 'kubectl rollout status deployment/smart-water --timeout=75s',
-                            returnStatus: true
-                        )
-
+                        sh '''#!/bin/sh
+set -eu
+sed "s|IMAGE_PLACEHOLDER|$DOCKER_IMAGE:$IMAGE_TAG|g" deployment.yaml > rendered-deployment.yaml
+kubectl apply -f rendered-deployment.yaml
+'''
+                        def rolloutCode = sh(script: 'kubectl rollout status deployment/smart-water --timeout=75s', returnStatus: true)
                         if (rolloutCode != 0) {
-
-                            echo 'ROLLOUT FAILED - Starting automatic rollback'
-
-                            sh '''
-                                set -eu
-
-                                kubectl get pods -l app=smart-water -o wide || true
-
-                                kubectl rollout undo deployment/smart-water
-
-                                kubectl rollout status deployment/smart-water --timeout=120s
-
-                                kubectl get pods -l app=smart-water
-                            '''
-
-                            error('Faulty release rolled back successfully')
+                            echo 'ROLLOUT FAILED — attempting automatic rollback to the previous stable ReplicaSet.'
+                            sh '''#!/bin/sh
+set -eu
+kubectl get pods -l app=smart-water -o wide || true
+kubectl rollout undo deployment/smart-water
+kubectl rollout status deployment/smart-water --timeout=120s
+kubectl get pods -l app=smart-water
+'''
+                            error('New release failed readiness checks; automatic rollback completed. Previous release restored.')
                         }
-
-                        sh '''
-                            set -eu
-                            kubectl get pods -l app=smart-water
-                            kubectl get service smart-water-service
-                        '''
+                        sh '''#!/bin/sh
+set -eu
+kubectl get pods -l app=smart-water
+kubectl get service smart-water-service
+'''
                     }
                 }
             }
         }
     }
-
     post {
-        always {
-            archiveArtifacts(
-                artifacts: '*-test.txt,rendered-deployment.yaml',
-                allowEmptyArchive: true
-            )
-        }
+        always { archiveArtifacts artifacts: '*-test.txt,rendered-deployment.yaml', allowEmptyArchive: true }
     }
 }
