@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AquaWatch | Smart Water Distribution</title>
+<style>
+:root{--bg:#081426;--card:#12233a;--border:#29415b;--text:#e9f4ff;--muted:#9cb2ca;--cyan:#45d9e8;--green:#53d3a3;--red:#ff6b78;--amber:#f4c76c}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(125deg,#071323,#0c1a31);color:var(--text);font:15px system-ui,Segoe UI,Arial,sans-serif}.wrap{max-width:1250px;margin:auto;padding:28px}header{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:24px}.brand{font-size:28px;font-weight:800;letter-spacing:.2px}.brand span{color:var(--cyan)}.sub{color:var(--muted);font-size:13px;margin-top:5px}.live{border:1px solid #2c7a6a;padding:8px 14px;border-radius:50px;color:var(--green);background:#102b31}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.card,.panel{border:1px solid var(--border);background:var(--card);border-radius:16px;padding:20px;box-shadow:0 12px 30px #0002}.label{color:var(--muted);font-size:13px}.value{font-size:30px;font-weight:800;margin:6px 0}.panel{margin-top:20px}.panel h2{margin:0 0 16px;font-size:19px}.toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px}select{padding:10px;border:1px solid var(--border);border-radius:9px;background:#0a192e;color:var(--text)}.tablewrap{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;min-width:800px}th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}td,th{padding:14px 12px;border-bottom:1px solid var(--border)}tr:last-child td{border:0}.pill{display:inline-block;border-radius:30px;padding:5px 10px;font-size:12px;font-weight:700}.ok{background:#103b35;color:var(--green)}.danger{background:#452533;color:var(--red)}.warn{background:#423521;color:var(--amber)}.bar{height:7px;background:#29415b;border-radius:10px;width:110px;margin-top:6px;overflow:hidden}.fill{height:100%;background:var(--cyan)}.alert{padding:12px 15px;border-left:4px solid var(--red);background:#321f32;border-radius:7px;margin:9px 0}.empty{color:var(--green);padding:10px}.foot{color:var(--muted);margin:22px 0 0;font-size:12px}@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.grid{grid-template-columns:1fr}.wrap{padding:16px}.brand{font-size:24px}}
+</style>
+</head>
+<body><main class="wrap">
+<header><div><div class="brand">💧 Aqua<span>Watch</span></div><div class="sub">City Water Authority · Distribution & Leakage Monitoring</div></div><div class="live">● SIMULATED LIVE DATA</div></header>
+<section class="grid"><div class="card"><div class="label">Monitored Zones</div><div class="value">6</div></div><div class="card"><div class="label">Safety Thresholds</div><div class="value" style="font-size:21px">2–5 bar</div><div class="sub">reservoir minimum: 25%</div></div></section>
+<section class="panel"><div class="toolbar"><h2>Zone Distribution Overview</h2></div><div class="tablewrap"><table><thead><tr><th>Zone</th><th>Reservoir</th><th>Daily Supply</th><th>Pressure</th><th>Supply Timings</th><th>Network Status</th></tr></thead><tbody id="zoneBody"></tbody></table></div></section>
+<section class="panel"><h2>⚠️ Monitoring & Maintenance Alerts</h2><div id="alerts"></div></section>
+<div class="foot">Demo data only · Normal pipeline pressure: 2.0–5.0 bar · Reservoir warning threshold: 25% · Refresh page to replay sample data</div>
+</main>
+<script>
+const zones=[
+{id:'North',level:78,supply:1250,pressure:3.6,timing:'06:00–10:00',status:'Operational'},
+{id:'South',level:22,supply:980,pressure:1.5,timing:'07:00–11:00',status:'Critical'},
+{id:'East',level:65,supply:1420,pressure:4.2,timing:'05:30–09:30',status:'Operational'},
+{id:'West',level:48,supply:1100,pressure:5.7,timing:'06:30–10:30',status:'Warning'},
+{id:'Central',level:91,supply:1750,pressure:3.8,timing:'05:00–11:00',status:'Operational'},
+{id:'Industrial',level:31,supply:860,pressure:2.5,timing:'08:00–12:00',status:'Operational'}
+];
+const color=(s)=>s==='Critical'?'danger':s==='Warning'?'warn':'ok';
+function render(){const data=zones;const warnings=[];
+ data.forEach(z=>{if(z.pressure<2||z.pressure>5)warnings.push({zone:z.id,severity:'Critical',text:`Pressure ${z.pressure.toFixed(1)} bar outside safe range (2.0–5.0 bar)`});if(z.level<25)warnings.push({zone:z.id,severity:'Critical',text:`Reservoir level ${z.level}% is below 25%`})});
+ 
+ document.querySelector('#zoneBody').innerHTML=data.map(z=>`<tr><td><strong>${z.id}</strong></td><td>${z.level}%<div class="bar"><div class="fill" style="width:${z.level}%;background:${z.level<25?'var(--red)':'var(--cyan)'}"></div></div></td><td>${z.supply.toLocaleString('en-IN')} kL</td><td>${z.pressure.toFixed(1)} bar</td><td>${z.timing}</td><td><span class="pill ${color(z.status)}">${z.status}</span></td></tr>`).join('');
+ document.querySelector('#alerts').innerHTML=warnings.length?warnings.map(w=>`<div class="alert"><strong>${w.severity} · ${w.zone}</strong> — ${w.text} · Priority: Immediate</div>`).join(''):'<div class="empty">✓ All selected zones within safety thresholds</div>';
+
+}
+render();
+</script></body></html>
