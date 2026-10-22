@@ -36,17 +36,26 @@ pipeline {
 
         stage('Parallel Quality Gates') {
             parallel {
-                stage('Validate Dashboard') {
-                    steps {
-                        bat '''
-                            @echo off
-                            if not exist index.html exit /b 1
-                            findstr /C:"AquaWatch" index.html >NUL || exit /b 1
-                            findstr /C:"zoneFilter" index.html >NUL || exit /b 1
-                            findstr /C:"leakages" index.html >NUL || exit /b 1
-                            echo Dashboard checks: PASS > dashboard-test.txt
-                        '''
-                    }
+                
+stage('Validate Dashboard') {
+    steps {
+        bat '''
+            @echo off
+            echo Checking dashboard...
+
+            if not exist index.html (
+                echo ERROR: index.html missing
+                exit /b 1
+            )
+
+            powershell.exe -NoProfile -NonInteractive -Command "$h = Get-Content 'index.html' -Raw; foreach ($s in @('AquaWatch','zoneFilter','leakages')) { if (-not $h.Contains($s)) { Write-Error ('Missing dashboard feature: ' + $s); exit 1 } }; Write-Output 'Dashboard validation PASSED'"
+            if errorlevel 1 exit /b 1
+
+            echo Dashboard checks: PASS > dashboard-test.txt
+        '''
+    }
+}
+
                 }
                 stage('Validate Manifests') {
                     steps {
